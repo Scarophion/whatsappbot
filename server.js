@@ -19,8 +19,11 @@ const USE_HTTPS = process.env.USE_HTTPS === 'true';
 // ====== WHATSAPP CLIENT ======
 const client = new Client({
     authStrategy: new LocalAuth({
-        dataPath: './session'
-    })
+        dataPath: '/data/whatsapp-session'
+    }),
+    puppeteer: {
+        args: ['--no-sandbox', '--disable-setuid-sandbox']
+    }
 });
 
 // Load certs
