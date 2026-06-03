@@ -1,0 +1,57 @@
+node_modules/
+
+# Logs
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+pnpm-debug.log*
+logs/
+*.log
+
+# Environment variables (VERY important)
+.env
+.env.*
+!.env.example
+
+# OS files
+.DS_Store
+Thumbs.db
+
+# Editor folders
+.vscode/
+.idea/
+
+# Temporary files
+tmp/
+temp/
+
+# Build output (if any)
+dist/
+build/
+
+# Puppeteer / WhatsApp session data
+.session/
+sessions/
+auth_info/
+LocalAuth/
+.wwebjs_auth/
+.wwebjs_cache/
+
+# Chromium / Puppeteer cache
+.cache/
+puppeteer-cache/
+
+# Coverage reports
+coverage/
+
+# Lock files (optional: keep if you want reproducible builds)
+# package-lock.json
+# yarn.lock
+# pnpm-lock.yaml
+
+# Docker (if you add later)
+docker-compose.override.yml
+
+# Misc
+*.swp
+*.swo
