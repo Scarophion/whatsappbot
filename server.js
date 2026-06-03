@@ -120,9 +120,12 @@ app.post('/send-message', async (req, res) => {
 });
 
 // ====== START SERVER ======
-// app.listen(PORT, () => {
-//     console.log(`🚀 Server running on port ${PORT}`);
-// });
+// For fly.io
+app.get('/', (req, res) => {
+  res.send('WhatsApp bot is running');
+});
+
+// Listen
 if (USE_HTTPS) {
     https.createServer(options, app).listen(3000, () => {
         console.log('HTTPS server running on port 3000');
