@@ -9,6 +9,6 @@
     "dotenv": "^16.4.0"
   },
   "scripts": {
-    "start": "node index.js"
+    "start": "node server.js"
   }
 }
