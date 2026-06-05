@@ -22,6 +22,7 @@ const client = new Client({
         dataPath: '/data/whatsapp-session'
     }),
     puppeteer: {
+        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
         args: ['--no-sandbox', '--disable-setuid-sandbox']
     }
 });
@@ -122,7 +123,7 @@ app.post('/send-message', async (req, res) => {
 // ====== START SERVER ======
 // For fly.io
 app.get('/', (req, res) => {
-  res.send('WhatsApp bot is running');
+    res.send('WhatsApp bot is running');
 });
 
 // Listen
