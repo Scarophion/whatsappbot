@@ -7,6 +7,7 @@ const crypto = require('crypto');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
 let isReady = false;
+let isInitializing = false;
 
 const app = express();
 app.use(express.json());
@@ -45,13 +46,27 @@ client.on('qr', qr => {
 client.on('ready', () => {
     console.log('✅ WhatsApp bot is ready!');
     isReady = true;
+    isInitializing = false;
 });
 
 client.on('disconnected', () => {
-    console.log('❌ WhatsApp disconnected');
+    console.log('❌ WhatsApp disconnected.');
     isReady = false;
 });
 
+client.on('authenticated', () => {
+    console.log('🔒 WhatsApp authenticated.');
+    isReady = true;
+});
+
+client.on('auth_failure', () => {
+    console.log('❌ WhatsApp authentication failed.');
+    isInitializing = false;
+    isReady = false;
+});
+
+console.log('Initializing WhatsApp client...');
+isInitializing = true;
 client.initialize();
 
 // ====== SECURITY MIDDLEWARE ======
@@ -90,7 +105,12 @@ let lastRequestTime = 0;
 app.post('/send-message', async (req, res) => {
     try {
         if (!isReady) {
-            return res.status(503).send('WhatsApp not ready yet');
+            if (isInitializing) {
+                return res.status(503).send('WhatsApp initializing...');
+            }
+            else{
+                await client.initialize();
+            }
         }
 
         // Rate limit
