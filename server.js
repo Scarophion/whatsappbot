@@ -6,6 +6,7 @@ const express = require('express');
 const crypto = require('crypto');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
+let isReady = false;
 
 const app = express();
 app.use(express.json());
@@ -43,6 +44,12 @@ client.on('qr', qr => {
 
 client.on('ready', () => {
     console.log('✅ WhatsApp bot is ready!');
+    isReady = true;
+});
+
+client.on('disconnected', () => {
+  console.log('❌ WhatsApp disconnected');
+  isReady = false;
 });
 
 client.initialize();
