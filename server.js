@@ -127,9 +127,9 @@ app.get('/', (req, res) => {
 });
 
 // Listen
-if (HOST !== 'localhost') {
+if (HOST == 'localhost') {
     https.createServer(options, app).listen(3000, () => {
-        console.log('HTTPS server running on port 3000');
+        console.log(`HTTPS server running on port ${PORT}`);
     });
 } else {
     app.listen(PORT,'0.0.0.0', () => {
