@@ -14,7 +14,7 @@ app.use(express.json());
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.SECRET_KEY;
 const ALLOWED_IPS = process.env.ALLOWED_IPS.split(',');
-const USE_HTTPS = process.env.USE_HTTPS === 'true';
+const HOST = process.env.HOST || 'fly.io';
 
 // ====== WHATSAPP CLIENT ======
 const client = new Client({
@@ -28,7 +28,7 @@ const client = new Client({
 });
 
 // Load certs
-if (USE_HTTPS) {
+if (HOST !== 'localhost') {
     const options = {
         pfx: fs.readFileSync(process.env.CERT_PATH),
         passphrase: process.env.CERT_PASSWORD
@@ -127,12 +127,12 @@ app.get('/', (req, res) => {
 });
 
 // Listen
-if (USE_HTTPS) {
+if (HOST !== 'localhost') {
     https.createServer(options, app).listen(3000, () => {
         console.log('HTTPS server running on port 3000');
     });
 } else {
-    app.listen(PORT, () => {
+    app.listen(PORT,'0.0.0.0', () => {
         console.log(`🚀 Server running on port ${PORT}`);
     });
 }

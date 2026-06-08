@@ -12,6 +12,10 @@ primary_region = 'lhr'
   source = 'whatsapp_data'
   destination = '/data'
 
+[[services]]
+  internal_port = 8080
+  protocol = "tcp"
+
 [http_service]
   internal_port = 8080
   force_https = true
