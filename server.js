@@ -48,8 +48,8 @@ client.on('ready', () => {
 });
 
 client.on('disconnected', () => {
-  console.log('❌ WhatsApp disconnected');
-  isReady = false;
+    console.log('❌ WhatsApp disconnected');
+    isReady = false;
 });
 
 client.initialize();
@@ -89,6 +89,10 @@ let lastRequestTime = 0;
 // ====== API ENDPOINT ======
 app.post('/send-message', async (req, res) => {
     try {
+        if (!isReady) {
+            return res.status(503).send('WhatsApp not ready yet');
+        }
+
         // Rate limit
         const now = Date.now();
         if (now - lastRequestTime < 2000) {
@@ -107,12 +111,12 @@ app.post('/send-message', async (req, res) => {
             return res.status(400).send('Missing group or message');
         }
 
-        const chats = await client.getChats();
-        const target = chats.find(chat => chat.name === group);
+        // const chats = await client.getChats();
+        // const target = chats.find(chat => chat.name === group);
 
-        if (!target) {
-            return res.status(404).send('Group not found');
-        }
+        // if (!target) {
+        //     return res.status(404).send('Group not found');
+        // }
 
         await client.sendMessage(target.id._serialized, message);
 
@@ -139,7 +143,7 @@ if (HOST == 'localhost') {
         console.log(`HTTPS server running on port ${PORT}`);
     });
 } else {
-    app.listen(PORT,'0.0.0.0', () => {
+    app.listen(PORT, '0.0.0.0', () => {
         console.log(`🚀 Server running on port ${PORT}`);
     });
 }
