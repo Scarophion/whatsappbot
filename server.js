@@ -28,7 +28,7 @@ const client = new Client({
 });
 
 // Load certs
-if (HOST !== 'localhost') {
+if (HOST === 'localhost') {
     const options = {
         pfx: fs.readFileSync(process.env.CERT_PATH),
         passphrase: process.env.CERT_PASSWORD
