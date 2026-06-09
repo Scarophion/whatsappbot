@@ -69,7 +69,6 @@ function createClient() {
         console.log('✅ WhatsApp bot is ready!');
         isReady = true;
         isClientReady();
-        await buildChatCache();
     });
 
     client.on('disconnected', () => {
@@ -161,47 +160,55 @@ function verifySignature(req) {
     return signature === expected;
 }
 
-// ====== API ENDPOINT ======
+function checkRateLimit() {
+    const now = Date.now();
+    if (now - lastRequestTime < 2000) {
+        return res.status(429).send('Too many requests');
+    }
+    lastRequestTime = now;
+}
+
+async function checkClientReady() {
+    if (!isReady) {
+        console.log('Client not ready.');
+        return res.status(503).send('Client not ready, try again in a few seconds.');
+    }
+    else if (!client) {
+        console.log('Zombie state. WhatsApp client not initialized.');
+        if (!client.pupPage) {
+            console.log('Puppeteer page not initialized. Destroying client.');
+            try {
+                await client.destroy();
+            }
+            catch (e) {
+                console.log('Error destroying client. Restart the app.:', e);
+                return res.status(503).send('Error destroying client. Restart the app.');
+            }
+        }
+        createClient();
+        return res.status(503).send('Client restarting, try again in a few seconds.');
+    }
+}
+
+// ====== API ENDPOINTS ======
 app.post('/send-message', async (req, res) => {
     try {
-        // Rate limit
-        const now = Date.now();
-        if (now - lastRequestTime < 2000) {
-            return res.status(429).send('Too many requests');
-        }
-        lastRequestTime = now;
-
-        // Verify signature
         if (!verifySignature(req)) {
             return res.status(401).send('Unauthorized');
         }
 
+        checkRateLimit();
         isClientReady();
-
-        if (!isReady) {
-            console.log('Client not ready.');
-            return res.status(503).send('Client not ready, try again in a few seconds.');
-        }
-        else if (!client) {
-            console.log('Zombie state. WhatsApp client not initialized.');
-            if (!client.pupPage) {
-                console.log('Puppeteer page not initialized. Destroying client.');
-                try {
-                    await client.destroy();
-                }
-                catch (e) {
-                    console.log('Error destroying client. Restart the app.:', e);
-                    return res.status(503).send('Error destroying client. Restart the app.');
-                }
-            }
-            createClient();
-            return res.status(503).send('Client restarting, try again in a few seconds.');
-        }
+        checkClientReady();
 
         const { group, message } = req.body;
 
         if (!group || !message) {
             return res.status(400).send('Missing group or message');
+        }
+        
+        if (!chatCache || chatCache.size === 0) {
+            await buildChatCache();
         }
 
         const chatId = chatCache.get(group);
@@ -212,7 +219,36 @@ app.post('/send-message', async (req, res) => {
 
         await client.sendMessage(chatId, message);
 
-        console.log(`📤 Sent message to ${group}`);
+        console.log(`📤 Sent message to ${group} (${chatId})`);
+        res.send('Message sent');
+
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    } finally {
+        console.log("Exiting send-message endpoint");
+    }
+});
+
+app.post('/send-message-by-id', async (req, res) => {
+    try {
+        if (!verifySignature(req)) {
+            return res.status(401).send('Unauthorized');
+        }
+		
+		checkRateLimit();
+        isClientReady();
+		checkClientReady();
+
+        const { chatId, message } = req.body;
+
+        if (!chatId || !message) {
+            return res.status(400).send('Missing chat ID or message');
+        }
+
+        await client.sendMessage(chatId, message);
+
+        console.log(`📤 Sent message to ${chatId}`);
         res.send('Message sent');
 
     } catch (err) {
