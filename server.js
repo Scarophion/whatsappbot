@@ -2,76 +2,31 @@ require('dotenv').config();
 
 const https = require('https');
 const fs = require('fs');
+const path = require('path');
 const express = require('express');
 const crypto = require('crypto');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-let isReady = false;
-let isInitializing = false;
+const { execSync } = require('child_process');
 
-const app = express();
-app.use(express.json());
+let client = null;
+let isReady = false;
+// Simple rate limit
+let lastRequestTime = 0;
+
 
 // ====== CONFIG ======
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.SECRET_KEY;
 const ALLOWED_IPS = process.env.ALLOWED_IPS.split(',');
 const HOST = process.env.HOST || 'fly.io';
+const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
-// ====== WHATSAPP CLIENT ======
-const client = new Client({
-    authStrategy: new LocalAuth({
-        dataPath: '/data/whatsapp-session'
-    }),
-    puppeteer: {
-        executablePath: process.env.PUPPETEER_EXECUTABLE_PATH || '/usr/bin/chromium',
-        args: ['--no-sandbox', '--disable-setuid-sandbox']
-    }
-});
+// App setup
+const app = express();
+app.use(express.json());
 
-// Load certs
-if (HOST === 'localhost') {
-    const options = {
-        pfx: fs.readFileSync(process.env.CERT_PATH),
-        passphrase: process.env.CERT_PASSWORD
-    };
-}
-
-// Event listeners
-client.on('qr', qr => {
-    console.log('Scan this QR code:');
-    qrcode.generate(qr, { small: true });
-});
-
-client.on('ready', () => {
-    console.log('✅ WhatsApp bot is ready!');
-    isReady = true;
-    isInitializing = false;
-});
-
-client.on('disconnected', () => {
-    console.log('❌ WhatsApp disconnected.');
-    isReady = false;
-});
-
-client.on('authenticated', () => {
-    console.log('🔒 WhatsApp authenticated.');
-    isReady = true;
-});
-
-client.on('auth_failure', () => {
-    console.log('❌ WhatsApp authentication failed.');
-    isInitializing = false;
-    isReady = false;
-});
-
-console.log('Initializing WhatsApp client...');
-isInitializing = true;
-client.initialize();
-
-// ====== SECURITY MIDDLEWARE ======
-
-// IP allowlist (optional but recommended)
+// IP allowlist (optional but recommended) 
 app.use((req, res, next) => {
     const ip = req.ip.replace('::ffff:', '');
 
@@ -82,6 +37,97 @@ app.use((req, res, next) => {
 
     next();
 });
+
+// ====== WHATSAPP CLIENT ======
+function createClient() {
+    //killChrome();
+    //cleanSessionLocks();
+
+    console.log('🛠 Creating new WhatsApp client...');
+
+    client = new Client({
+        authStrategy: new LocalAuth({
+            dataPath: '/data/whatsapp-session'
+        }),
+        puppeteer: {
+            executablePath: PUPPETEER_EXECUTABLE_PATH,
+            args: ['--no-sandbox', '--disable-setuid-sandbox']
+        }
+    });
+
+    // Event listeners
+    client.on('qr', qr => {
+        console.log('Scan this QR code:');
+        qrcode.generate(qr, { small: true });
+    });
+
+    client.on('ready', () => {
+        console.log('✅ WhatsApp bot is ready!');
+        isReady = true;
+        isClientReady();
+    });
+
+    client.on('disconnected', () => {
+        console.log('❌ WhatsApp disconnected.');
+        isReady = false;
+    });
+
+    client.on('authenticated', () => {
+        console.log('🔒 WhatsApp authenticated.');
+        isReady = true;
+    });
+
+    client.on('auth_failure', () => {
+        console.log('❌ WhatsApp authentication failed.');
+        isReady = false;
+    });
+
+    console.log('Initializing WhatsApp client...');
+    client.initialize();
+}
+
+function cleanSessionLocks() {
+    const sessionPath = '/data/whatsapp-session/session';
+
+    const lockFiles = [
+        'SingletonLock',
+        'SingletonCookie',
+        'SingletonSocket'
+    ];
+
+    lockFiles.forEach(file => {
+        const filePath = path.join(sessionPath, file);
+
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+                console.log(`🧹 Removed lock: ${file}`);
+            } catch (err) {
+                console.log(`⚠️ Failed to remove ${file}`);
+            }
+        }
+    });
+}
+
+function killChrome() {
+    try {
+        console.log('🧹 Killing existing Chrome processes...');
+
+        if (process.platform === 'win32') {
+            execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
+        } else {
+            execSync('pkill -f chromium || true');
+            execSync('pkill -f chrome || true');
+        }
+    } catch (err) {
+        console.log(err.message);
+    }
+}
+
+function isClientReady(){
+    console.log("Client readiness: ", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A');
+    return isReady && client && client.pupPage;
+}
 
 // HMAC verification
 function verifySignature(req) {
@@ -98,21 +144,9 @@ function verifySignature(req) {
     return signature === expected;
 }
 
-// Simple rate limit
-let lastRequestTime = 0;
-
 // ====== API ENDPOINT ======
 app.post('/send-message', async (req, res) => {
     try {
-        if (!isReady) {
-            if (isInitializing) {
-                return res.status(503).send('WhatsApp initializing...');
-            }
-            else{
-                await client.initialize();
-            }
-        }
-
         // Rate limit
         const now = Date.now();
         if (now - lastRequestTime < 2000) {
@@ -125,18 +159,42 @@ app.post('/send-message', async (req, res) => {
             return res.status(401).send('Unauthorized');
         }
 
+        isClientReady();
+
+        if (!isReady || !client || !client.pupPage) {
+            isReady = false;
+            if (!client) {
+                console.log('WhatsApp client not initialized. initializing now...');
+                createClient();
+                return res.status(503).send('Client restarting, try again in a few seconds.');
+            }
+            else if (!client.pupPage) {
+                console.log('Puppeteer page not initialized. initializing now...');
+
+                try {
+                    await client.destroy();
+                    createClient();
+                }
+                catch (e) {
+                    console.log('Error destroying client. Restart the app.:', e);
+                    return res.status(503).send('Error destroying client. Restart the app.');
+                }
+                return res.status(503).send('Client restarting, try again in a few seconds.');
+            }
+        }
+
         const { group, message } = req.body;
 
         if (!group || !message) {
             return res.status(400).send('Missing group or message');
         }
 
-        // const chats = await client.getChats();
-        // const target = chats.find(chat => chat.name === group);
+        const chats = await client.getChats();
+        const target = chats.find(chat => chat.name === group);
 
-        // if (!target) {
-        //     return res.status(404).send('Group not found');
-        // }
+        if (!target) {
+            return res.status(404).send('Group not found');
+        }
 
         await client.sendMessage(target.id._serialized, message);
 
@@ -152,18 +210,37 @@ app.post('/send-message', async (req, res) => {
 });
 
 // ====== START SERVER ======
-// For fly.io
-app.get('/', (req, res) => {
-    res.send('WhatsApp bot is running');
-});
+switch (HOST) {
+    case "localhost":
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+        });
+        break;
+    case "fly.io":
+        app.get('/', (req, res) => {
+            res.send('WhatsApp bot is running');
+        });
 
-// Listen
-if (HOST == 'localhost') {
-    https.createServer(options, app).listen(3000, () => {
-        console.log(`HTTPS server running on port ${PORT}`);
-    });
-} else {
-    app.listen(PORT, '0.0.0.0', () => {
-        console.log(`🚀 Server running on port ${PORT}`);
-    });
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+        });
+        break;
+    case "localhostssl":
+        // Certs
+        const options = {
+            pfx: fs.readFileSync(process.env.CERT_PATH),
+            passphrase: process.env.CERT_PASSWORD
+        };
+        // Server
+        https.createServer(options, app).listen(3000, () => {
+            console.log(`HTTPS server running on port ${PORT}`);
+        });
+        break;
+    default:
+        app.listen(PORT, '0.0.0.0', () => {
+            console.log(`🚀 Server running on port ${PORT}`);
+        });
 }
+
+// ===== INITIALIZE =====
+createClient();
