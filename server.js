@@ -1,13 +1,13 @@
 require('dotenv').config();
 
 const https = require('https');
-// const fs = require('fs');
-// const path = require('path');
+const fs = require('fs');
 const express = require('express');
 const crypto = require('crypto');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-// const { execSync } = require('child_process');
+const path = require('path');
+const { execSync } = require('child_process');
 
 let client = null;
 let isReady = false;
@@ -41,10 +41,13 @@ app.use((req, res, next) => {
 
 // ====== WHATSAPP CLIENT ======
 function createClient() {
-    //killChrome();
-    //cleanSessionLocks();
 
     console.log('🛠 Creating new WhatsApp client...');
+
+    if (client && !!client.pupPage) {
+        killChrome();
+        //cleanSessionLocks();
+    }
 
     client = new Client({
         authStrategy: new LocalAuth({
@@ -111,20 +114,20 @@ function createClient() {
 //     });
 // }
 
-// function killChrome() {
-//     try {
-//         console.log('🧹 Killing existing Chrome processes...');
+function killChrome() {
+    try {
+        console.log('🧹 Killing existing Chrome processes...');
 
-//         if (process.platform === 'win32') {
-//             execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
-//         } else {
-//             execSync('pkill -f chromium || true');
-//             execSync('pkill -f chrome || true');
-//         }
-//     } catch (err) {
-//         console.log(err.message);
-//     }
-// }
+        if (process.platform === 'win32') {
+            execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
+        } else {
+            execSync('pkill -f chromium || true');
+            execSync('pkill -f chrome || true');
+        }
+    } catch (err) {
+        console.log(err.message);
+    }
+}
 
 async function buildChatCache() {
     console.log('📚 Building chat cache...');
