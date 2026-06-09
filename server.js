@@ -168,10 +168,10 @@ function checkRateLimit() {
     lastRequestTime = now;
 }
 
-async function checkClientReady() {
+async function checkClientReady(response) {
     if (!isReady) {
         console.log('Client not ready.');
-        return res.status(503).send('Client not ready, try again in a few seconds.');
+        return response.status(503).send('Client not ready, try again in a few seconds.');
     }
     else if (!client) {
         console.log('Zombie state. WhatsApp client not initialized.');
@@ -182,11 +182,11 @@ async function checkClientReady() {
             }
             catch (e) {
                 console.log('Error destroying client. Restart the app.:', e);
-                return res.status(503).send('Error destroying client. Restart the app.');
+                return response.status(503).send('Error destroying client. Restart the app.');
             }
         }
         createClient();
-        return res.status(503).send('Client restarting, try again in a few seconds.');
+        return response.status(503).send('Client restarting, try again in a few seconds.');
     }
 }
 
@@ -199,7 +199,7 @@ app.post('/send-message', async (req, res) => {
 
         checkRateLimit();
         isClientReady();
-        checkClientReady();
+        checkClientReady(res);
 
         const { group, message } = req.body;
 
@@ -238,7 +238,7 @@ app.post('/send-message-by-id', async (req, res) => {
 		
 		checkRateLimit();
         isClientReady();
-		checkClientReady();
+		checkClientReady(res);
 
         const { chatId, message } = req.body;
 
