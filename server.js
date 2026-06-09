@@ -55,7 +55,14 @@ function createClient() {
         }),
         puppeteer: {
             executablePath: PUPPETEER_EXECUTABLE_PATH,
-            args: ['--no-sandbox', '--disable-setuid-sandbox']
+            args: [
+                '--no-sandbox',
+                '--disable-setuid-sandbox',
+                '--disable-dev-shm-usage',
+                '--disable-gpu',
+                '--no-zygote',
+                '--single-process'
+            ]
         }
     });
 
@@ -66,6 +73,8 @@ function createClient() {
     });
 
     client.on('ready', async () => {
+        // Give WhatsApp Web time to settle
+        await new Promise(r => setTimeout(r, 5000));
         console.log('✅ WhatsApp bot is ready!');
         isReady = true;
         isClientReady();
@@ -141,8 +150,9 @@ async function buildChatCache() {
 }
 
 function isClientReady() {
-    console.log("Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A');
-    return isReady && client && client.pupPage;
+    console.log("Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
+        "Puppeteer page open:", !client.pupPage.isClosed());
+    return isReady && client && client.pupPage && !client.pupPage.isClosed();
 }
 
 // HMAC verification
@@ -175,7 +185,7 @@ async function checkClientReady(response) {
     }
     else if (!client) {
         console.log('Zombie state. WhatsApp client not initialized.');
-        if (!client.pupPage) {
+        if (!client.pupPage || client.pupPage.isClosed()) {
             console.log('Puppeteer page not initialized. Destroying client.');
             try {
                 await client.destroy();
@@ -206,7 +216,7 @@ app.post('/send-message', async (req, res) => {
         if (!group || !message) {
             return res.status(400).send('Missing group or message');
         }
-        
+
         if (!chatCache || chatCache.size === 0) {
             await buildChatCache();
         }
@@ -235,10 +245,10 @@ app.post('/send-message-by-id', async (req, res) => {
         if (!verifySignature(req)) {
             return res.status(401).send('Unauthorized');
         }
-		
-		checkRateLimit();
+
+        checkRateLimit();
         isClientReady();
-		checkClientReady(res);
+        checkClientReady(res);
 
         const { chatId, message } = req.body;
 
