@@ -1,18 +1,19 @@
 require('dotenv').config();
 
 const https = require('https');
-const fs = require('fs');
-const path = require('path');
+// const fs = require('fs');
+// const path = require('path');
 const express = require('express');
 const crypto = require('crypto');
 const { Client, LocalAuth } = require('whatsapp-web.js');
 const qrcode = require('qrcode-terminal');
-const { execSync } = require('child_process');
+// const { execSync } = require('child_process');
 
 let client = null;
 let isReady = false;
 // Simple rate limit
 let lastRequestTime = 0;
+let chatCache = new Map();
 
 
 // ====== CONFIG ======
@@ -61,10 +62,11 @@ function createClient() {
         qrcode.generate(qr, { small: true });
     });
 
-    client.on('ready', () => {
+    client.on('ready', async () => {
         console.log('✅ WhatsApp bot is ready!');
         isReady = true;
         isClientReady();
+        await buildChatCache();
     });
 
     client.on('disconnected', () => {
@@ -86,46 +88,58 @@ function createClient() {
     client.initialize();
 }
 
-function cleanSessionLocks() {
-    const sessionPath = '/data/whatsapp-session/session';
+// function cleanSessionLocks() {
+//     const sessionPath = '/data/whatsapp-session/session';
 
-    const lockFiles = [
-        'SingletonLock',
-        'SingletonCookie',
-        'SingletonSocket'
-    ];
+//     const lockFiles = [
+//         'SingletonLock',
+//         'SingletonCookie',
+//         'SingletonSocket'
+//     ];
 
-    lockFiles.forEach(file => {
-        const filePath = path.join(sessionPath, file);
+//     lockFiles.forEach(file => {
+//         const filePath = path.join(sessionPath, file);
 
-        if (fs.existsSync(filePath)) {
-            try {
-                fs.unlinkSync(filePath);
-                console.log(`🧹 Removed lock: ${file}`);
-            } catch (err) {
-                console.log(`⚠️ Failed to remove ${file}`);
-            }
-        }
+//         if (fs.existsSync(filePath)) {
+//             try {
+//                 fs.unlinkSync(filePath);
+//                 console.log(`🧹 Removed lock: ${file}`);
+//             } catch (err) {
+//                 console.log(`⚠️ Failed to remove ${file}`);
+//             }
+//         }
+//     });
+// }
+
+// function killChrome() {
+//     try {
+//         console.log('🧹 Killing existing Chrome processes...');
+
+//         if (process.platform === 'win32') {
+//             execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
+//         } else {
+//             execSync('pkill -f chromium || true');
+//             execSync('pkill -f chrome || true');
+//         }
+//     } catch (err) {
+//         console.log(err.message);
+//     }
+// }
+
+async function buildChatCache() {
+    console.log('📚 Building chat cache...');
+
+    const chats = await client.getChats();
+
+    chats.forEach(chat => {
+        chatCache.set(chat.name, chat.id._serialized);
     });
+
+    console.log(`✅ Cached ${chatCache.size} chats`);
 }
 
-function killChrome() {
-    try {
-        console.log('🧹 Killing existing Chrome processes...');
-
-        if (process.platform === 'win32') {
-            execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
-        } else {
-            execSync('pkill -f chromium || true');
-            execSync('pkill -f chrome || true');
-        }
-    } catch (err) {
-        console.log(err.message);
-    }
-}
-
-function isClientReady(){
-    console.log("Client readiness: ", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A');
+function isClientReady() {
+    console.log("Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A');
     return isReady && client && client.pupPage;
 }
 
@@ -189,14 +203,13 @@ app.post('/send-message', async (req, res) => {
             return res.status(400).send('Missing group or message');
         }
 
-        const chats = await client.getChats();
-        const target = chats.find(chat => chat.name === group);
+        const chatId = chatCache.get(group);
 
-        if (!target) {
-            return res.status(404).send('Group not found');
+        if (!chatId) {
+            return res.status(404).send('Group not found in cache');
         }
 
-        await client.sendMessage(target.id._serialized, message);
+        await client.sendMessage(chatId, message);
 
         console.log(`📤 Sent message to ${group}`);
         res.send('Message sent');
