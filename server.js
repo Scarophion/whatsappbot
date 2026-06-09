@@ -178,26 +178,24 @@ app.post('/send-message', async (req, res) => {
 
         isClientReady();
 
-        if (!isReady || !client || !client.pupPage) {
-            isReady = false;
-            if (!client) {
-                console.log('WhatsApp client not initialized. initializing now...');
-                createClient();
-                return res.status(503).send('Client restarting, try again in a few seconds.');
-            }
-            else if (!client.pupPage) {
-                console.log('Puppeteer page not initialized. initializing now...');
-
+        if (!isReady) {
+            console.log('Client not ready.');
+            return res.status(503).send('Client not ready, try again in a few seconds.');
+        }
+        else if (!client) {
+            console.log('Zombie state. WhatsApp client not initialized.');
+            if (!client.pupPage) {
+                console.log('Puppeteer page not initialized. Destroying client.');
                 try {
                     await client.destroy();
-                    createClient();
                 }
                 catch (e) {
                     console.log('Error destroying client. Restart the app.:', e);
                     return res.status(503).send('Error destroying client. Restart the app.');
                 }
-                return res.status(503).send('Client restarting, try again in a few seconds.');
             }
+            createClient();
+            return res.status(503).send('Client restarting, try again in a few seconds.');
         }
 
         const { group, message } = req.body;
@@ -229,16 +227,16 @@ app.post('/send-message', async (req, res) => {
 switch (HOST) {
     case "localhost":
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`🚀 Server listening on port ${PORT}`);
         });
         break;
     case "fly.io":
         app.get('/', (req, res) => {
-            res.send('WhatsApp bot is running');
+            res.send('WhatsApp bot bumped.');
         });
 
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`🚀 Server listening on port ${PORT}`);
         });
         break;
     case "localhostssl":
@@ -249,12 +247,12 @@ switch (HOST) {
         };
         // Server
         https.createServer(options, app).listen(3000, () => {
-            console.log(`HTTPS server running on port ${PORT}`);
+            console.log(`HTTPS server v on port ${PORT}`);
         });
         break;
     default:
         app.listen(PORT, '0.0.0.0', () => {
-            console.log(`🚀 Server running on port ${PORT}`);
+            console.log(`🚀 Server listening on port ${PORT}`);
         });
 }
 
