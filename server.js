@@ -178,13 +178,19 @@ function checkRateLimit() {
     lastRequestTime = now;
 }
 
-async function checkClientReady(response) {
+async function checkClientReady() {
+    $ready = true;
+    $message = "";
+
     if (!isReady) {
         console.log('Client not ready.');
-        return response.status(503).send('Client not ready, try again in a few seconds.');
+        $ready = false;
+        $message = 'Client not ready, try again in a few seconds.';
+        return response.status(503).send($message);
     }
     else if (!client) {
         console.log('Zombie state. WhatsApp client not initialized.');
+        ready = false;
         if (!client.pupPage || client.pupPage.isClosed()) {
             console.log('Puppeteer page not initialized. Destroying client.');
             try {
@@ -192,12 +198,13 @@ async function checkClientReady(response) {
             }
             catch (e) {
                 console.log('Error destroying client. Restart the app.:', e);
-                return response.status(503).send('Error destroying client. Restart the app.');
             }
         }
         createClient();
-        return response.status(503).send('Client restarting, try again in a few seconds.');
+        message = 'Client restarting, try again in a few seconds.';
     }
+
+    return { ready: $ready, message: $message };
 }
 
 // ====== API ENDPOINTS ======
@@ -209,7 +216,11 @@ app.post('/send-message', async (req, res) => {
 
         checkRateLimit();
         isClientReady();
-        checkClientReady(res);
+        const { ready, respMessage } = await checkClientReady();
+
+        if (!ready) {
+            return res.status(503).send(respMessage);
+        }
 
         const { group, message } = req.body;
 
@@ -248,7 +259,11 @@ app.post('/send-message-by-id', async (req, res) => {
 
         checkRateLimit();
         isClientReady();
-        checkClientReady(res);
+        const { ready, respMessage } = await checkClientReady();
+
+        if (!ready) {
+            return res.status(503).send(respMessage);
+        }
 
         const { chatId, message } = req.body;
 
