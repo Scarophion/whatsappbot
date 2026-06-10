@@ -11,6 +11,7 @@ const { execSync } = require('child_process');
 
 let client = null;
 let isReady = false;
+let initializing = false;
 // Simple rate limit
 let lastRequestTime = 0;
 let chatCache = new Map();
@@ -95,19 +96,38 @@ function createClient() {
         isReady = false;
     });
 
-    console.log('Initializing WhatsApp client...');
     safeInitialize(client);
 }
 
 async function safeInitialize(client) {
-    console.log('⏳ Waiting before initialization...');
-    await new Promise(r => setTimeout(r, 5000));
+    initialized = false;
+    attempt = 0;
 
-    try {
-        await client.initialize();
-    } catch (err) {
-        console.error('❌ Initialization failed:', err.message);
+    while (attempt < 5 && !initialized) {
+        console.log('⏳ Waiting before initialization...');
+        await new Promise(r => setTimeout(r, 5000));
+
+        try {
+            console.log('Initializing WhatsApp client. Attempt:', attempt + 1);
+            initializing = true;
+            await client.initialize();
+            initialized = true;
+            console.log('✅ WhatsApp client initialized successfully!');
+        } catch (err) {
+            console.error('❌ Initialization failed:', err.message);
+        }
+        finally {
+            initializing = false;
+        }
+
+        attempt++;
     }
+
+    if (attempt >= 5 && !initialized) {
+        console.error(`❌ Failed to initialize WhatsApp client after ${attempt} attempts. Exiting.`);
+    }
+
+    return initialized;
 }
 
 // function cleanSessionLocks() {
@@ -161,9 +181,9 @@ async function buildChatCache() {
 }
 
 function isClientReady() {
-    console.log("Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
+    console.log("Client initializing:", initializing, "Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
         "Puppeteer page open:", !client.pupPage.isClosed());
-    return isReady && client && client.pupPage && !client.pupPage.isClosed();
+    return !initializing && isReady && client && client.pupPage && !client.pupPage.isClosed();
 }
 
 // HMAC verification
@@ -193,7 +213,11 @@ async function checkClientReady() {
     $ready = true;
     $message = "";
 
-    if (!isReady) {
+    if (initializing) {
+        console.log('Client is initializing. Please wait.');
+        $ready = false;
+        $message = 'Client is initializing, try again in a few seconds.';
+    } else if (!isReady) {
         console.log('Client not ready.');
         $ready = false;
         $message = 'Client not ready, try again in a few seconds.';
