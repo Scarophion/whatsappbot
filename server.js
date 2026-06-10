@@ -186,11 +186,11 @@ async function checkClientReady() {
         console.log('Client not ready.');
         $ready = false;
         $message = 'Client not ready, try again in a few seconds.';
-        return response.status(503).send($message);
     }
     else if (!client) {
         console.log('Zombie state. WhatsApp client not initialized.');
         ready = false;
+
         if (!client.pupPage || client.pupPage.isClosed()) {
             console.log('Puppeteer page not initialized. Destroying client.');
             try {
@@ -200,6 +200,7 @@ async function checkClientReady() {
                 console.log('Error destroying client. Restart the app.:', e);
             }
         }
+        
         createClient();
         message = 'Client restarting, try again in a few seconds.';
     }
