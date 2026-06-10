@@ -243,8 +243,22 @@ async function checkClientReady() {
     return { ready: $ready, message: $message };
 }
 
+async function checkBrowserAndRestart() {
+    try {
+        if (client && client.pupPage) {
+            await client.pupPage.evaluate(() => true);
+            console.log('💓 Chrome alive');
+        }
+    } catch (err) {
+        console.log('💔 Chrome unresponsive. Restarting client');
+        await client.destroy().catch(() => { });
+        createClient();
+    }
+}
+
 // ====== API ENDPOINTS ======
 app.post('/send-message', async (req, res) => {
+    console.log("Begin request: /send-message");
     try {
         if (!verifySignature(req)) {
             return res.status(401).send('Unauthorized');
@@ -274,6 +288,8 @@ app.post('/send-message', async (req, res) => {
             return res.status(404).send('Group not found in cache');
         }
 
+        await checkBrowserAndRestart();
+
         await client.sendMessage(chatId, message);
 
         console.log(`📤 Sent message to ${group} (${chatId})`);
@@ -289,6 +305,7 @@ app.post('/send-message', async (req, res) => {
 
 app.post('/send-message-by-id', async (req, res) => {
     try {
+        console.log("Begin request: /send-message-by-id");
         if (!verifySignature(req)) {
             return res.status(401).send('Unauthorized');
         }
@@ -306,6 +323,8 @@ app.post('/send-message-by-id', async (req, res) => {
         if (!chatId || !message) {
             return res.status(400).send('Missing chat ID or message');
         }
+
+        await checkBrowserAndRestart();
 
         await client.sendMessage(chatId, message);
 
