@@ -105,7 +105,7 @@ async function createClient(destroyExisting = true) {
         console.log('❌ WhatsApp authentication failed.');
         isClientReady = false;
     });
-    
+
     await safeInitialize(client);
     isClientCreating = false;
 }
@@ -226,6 +226,7 @@ async function ensureClientReady() {
                         ready = true;
                     } else {
                         console.log('Chrome Store not found.');
+                        recreateClient = true;
                     }
                 } catch (err) {
                     console.log('Chrome unresponsive.', err);
