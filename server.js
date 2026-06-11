@@ -11,6 +11,7 @@ const { execSync } = require('child_process');
 
 let client = null;
 let isClientReady = false;
+let isClientCreating = false;
 let isClientInitializing = false;
 let lastRequestTime = 0;
 let chatCache = new Map();
@@ -18,9 +19,9 @@ let chatCache = new Map();
 // ====== CONFIG ======
 const PORT = process.env.PORT || 3000;
 const SECRET = process.env.SECRET_KEY;
-const ALLOWED_IPS = process.env.ALLOWED_IPS.split(',');
+const ALLOWED_IPS = process.env.ALLOWED_IPS ? process.env.ALLOWED_IPS.split(',') : [];
 const HOST = process.env.HOST || 'fly.io';
-const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
+//const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || undefined;
 
 // App setup
 const app = express();
@@ -39,7 +40,23 @@ app.use((req, res, next) => {
 });
 
 // ====== WHATSAPP CLIENT ======
-function createClient() {
+async function createClient(destroyExisting = true) {
+    if (isClientCreating) {
+        console.log('Client creation already in progress. Please wait.');
+        return;
+    }
+
+    if (destroyExisting) {
+        console.log('Destroying existing client if it exists...');
+        if (client) {
+            await client.destroy().catch(() => { });
+        }
+        killChrome();
+        cleanSessionLocks();
+        isClientCreating = false;
+    }
+
+    isClientCreating = true;
     console.log('🛠 Creating new WhatsApp client...');
 
     client = new Client({
@@ -47,14 +64,15 @@ function createClient() {
             dataPath: '/data/whatsapp-session'
         }),
         puppeteer: {
-            executablePath: PUPPETEER_EXECUTABLE_PATH,
+            // executablePath: PUPPETEER_EXECUTABLE_PATH,
+            headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--no-zygote',
-                '--single-process'
+                // '--single-process'
             ]
         }
     });
@@ -87,17 +105,19 @@ function createClient() {
         console.log('❌ WhatsApp authentication failed.');
         isClientReady = false;
     });
-
-    safeInitialize(client);
+    
+    await safeInitialize(client);
+    isClientCreating = false;
 }
 
 async function safeInitialize(client) {
     initialized = false;
     attempt = 0;
 
-    while (attempt < 5 && !initialized) {
+    while (!initialized && attempt < 5) {
         console.log('⏳ Waiting before initialization...');
         await new Promise(r => setTimeout(r, 5000));
+        printClientReady();
 
         try {
             console.log('Initializing WhatsApp client. Attempt:', attempt + 1);
@@ -106,9 +126,6 @@ async function safeInitialize(client) {
             initialized = true;
             console.log('✅ WhatsApp client initialized successfully!');
         } catch (err) {
-            if (err.message.includes('The browser is already running')) {
-                initialized = true;
-            }
             console.error('❌ Initialization failed:', err.message);
         }
         finally {
@@ -116,6 +133,7 @@ async function safeInitialize(client) {
         }
 
         attempt++;
+        console.log('Initialization attempt', attempt, 'completed. Success:', initialized);
     }
 
     if (attempt >= 5 && !initialized) {
@@ -125,28 +143,28 @@ async function safeInitialize(client) {
     return initialized;
 }
 
-// function cleanSessionLocks() {
-//     const sessionPath = '/data/whatsapp-session/session';
+function cleanSessionLocks() {
+    const sessionPath = '/data/whatsapp-session/session';
 
-//     const lockFiles = [
-//         'SingletonLock',
-//         'SingletonCookie',
-//         'SingletonSocket'
-//     ];
+    const lockFiles = [
+        'SingletonLock',
+        'SingletonCookie',
+        'SingletonSocket'
+    ];
 
-//     lockFiles.forEach(file => {
-//         const filePath = path.join(sessionPath, file);
+    lockFiles.forEach(file => {
+        const filePath = path.join(sessionPath, file);
 
-//         if (fs.existsSync(filePath)) {
-//             try {
-//                 fs.unlinkSync(filePath);
-//                 console.log(`🧹 Removed lock: ${file}`);
-//             } catch (err) {
-//                 console.log(`⚠️ Failed to remove ${file}`);
-//             }
-//         }
-//     });
-// }
+        if (fs.existsSync(filePath)) {
+            try {
+                fs.unlinkSync(filePath);
+                console.log(`🧹 Removed lock: ${file}`);
+            } catch (err) {
+                console.log(`⚠️ Failed to remove ${file}`);
+            }
+        }
+    });
+}
 
 function killChrome() {
     try {
@@ -158,15 +176,12 @@ function killChrome() {
             execSync('pkill -f chromium || true');
             execSync('pkill -f chrome || true');
         }
-    } catch (err) {
-        // console.log(err.message);
-    }
+    } catch (err) { }
 }
 
 function printClientReady() {
     console.log("Client initializing:", isClientInitializing, "Client readiness:", isClientReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
-        "Puppeteer page open:", !client.pupPage.isClosed());
-    // return !initializing && isReady && client && client.pupPage && !client.pupPage.isClosed();
+        "Puppeteer page open:", client && client.pupPage ? !client.pupPage.isClosed() : 'N/A');
 }
 
 async function ensureClientReady() {
@@ -174,7 +189,7 @@ async function ensureClientReady() {
     $message = "";
     $attempt = 0;
 
-    while (attempt < 5 && !ready) {
+    while (!$ready && $attempt < 5) {
         recreateClient = false;
 
         if (attempt != 0) {
@@ -182,7 +197,11 @@ async function ensureClientReady() {
             await new Promise(r => setTimeout(r, 5000));
         }
 
-        if (isClientInitializing) {
+        if (isClientCreating) {
+            console.log('Client is being created. Please wait.');
+            $message = 'Client is being created, try again in a few seconds.';
+        }
+        else if (isClientInitializing) {
             console.log('Client is initializing. Please wait.');
             $message = 'Client is initializing, try again in a few seconds.';
         } else if (!isClientReady) {
@@ -218,9 +237,7 @@ async function ensureClientReady() {
         if (recreateClient) {
             console.log('Recreating client...');
             recreateClient = false;
-            await client.destroy().catch(() => { });
-            killChrome();
-            createClient();
+            await createClient(true);
         }
 
         attempt++;
@@ -377,4 +394,4 @@ switch (HOST) {
 }
 
 // ===== INITIALIZE =====
-createClient();
+createClient(true);
