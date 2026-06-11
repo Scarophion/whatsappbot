@@ -10,12 +10,10 @@ const path = require('path');
 const { execSync } = require('child_process');
 
 let client = null;
-let isReady = false;
-let initializing = false;
-// Simple rate limit
+let isClientReady = false;
+let isClientInitializing = false;
 let lastRequestTime = 0;
 let chatCache = new Map();
-
 
 // ====== CONFIG ======
 const PORT = process.env.PORT || 3000;
@@ -28,7 +26,7 @@ const PUPPETEER_EXECUTABLE_PATH = process.env.PUPPETEER_EXECUTABLE_PATH || undef
 const app = express();
 app.use(express.json());
 
-// IP allowlist (optional but recommended) 
+// IP allowlist 
 app.use((req, res, next) => {
     const ip = req.ip.replace('::ffff:', '');
 
@@ -42,13 +40,7 @@ app.use((req, res, next) => {
 
 // ====== WHATSAPP CLIENT ======
 function createClient() {
-
     console.log('🛠 Creating new WhatsApp client...');
-
-    if (client && !!client.pupPage) {
-        killChrome();
-        //cleanSessionLocks();
-    }
 
     client = new Client({
         authStrategy: new LocalAuth({
@@ -77,23 +69,23 @@ function createClient() {
         // Give WhatsApp Web time to settle
         await new Promise(r => setTimeout(r, 5000));
         console.log('✅ WhatsApp bot is ready!');
-        isReady = true;
-        isClientReady();
+        isClientReady = true;
+        printClientReady();
     });
 
     client.on('disconnected', () => {
         console.log('❌ WhatsApp disconnected.');
-        isReady = false;
+        isClientReady = false;
     });
 
     client.on('authenticated', () => {
         console.log('🔒 WhatsApp authenticated.');
-        isReady = true;
+        isClientReady = true;
     });
 
     client.on('auth_failure', () => {
         console.log('❌ WhatsApp authentication failed.');
-        isReady = false;
+        isClientReady = false;
     });
 
     safeInitialize(client);
@@ -109,15 +101,18 @@ async function safeInitialize(client) {
 
         try {
             console.log('Initializing WhatsApp client. Attempt:', attempt + 1);
-            initializing = true;
+            isClientInitializing = true;
             await client.initialize();
             initialized = true;
             console.log('✅ WhatsApp client initialized successfully!');
         } catch (err) {
+            if (err.message.includes('The browser is already running')) {
+                initialized = true;
+            }
             console.error('❌ Initialization failed:', err.message);
         }
         finally {
-            initializing = false;
+            isClientInitializing = false;
         }
 
         attempt++;
@@ -164,8 +159,74 @@ function killChrome() {
             execSync('pkill -f chrome || true');
         }
     } catch (err) {
-        console.log(err.message);
+        // console.log(err.message);
     }
+}
+
+function printClientReady() {
+    console.log("Client initializing:", isClientInitializing, "Client readiness:", isClientReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
+        "Puppeteer page open:", !client.pupPage.isClosed());
+    // return !initializing && isReady && client && client.pupPage && !client.pupPage.isClosed();
+}
+
+async function ensureClientReady() {
+    $ready = false;
+    $message = "";
+    $attempt = 0;
+
+    while (attempt < 5 && !ready) {
+        recreateClient = false;
+
+        if (attempt != 0) {
+            console.log("Waiting to retry ensureClientReady...");
+            await new Promise(r => setTimeout(r, 5000));
+        }
+
+        if (isClientInitializing) {
+            console.log('Client is initializing. Please wait.');
+            $message = 'Client is initializing, try again in a few seconds.';
+        } else if (!isClientReady) {
+            console.log('Client not ready.');
+            $message = 'Client not ready, try again in a few seconds.';
+        }
+        else if (!client) {
+            console.log('Zombie state. WhatsApp client not initialized.');
+            recreateClient = true;
+        }
+        else {
+            if (!client.pupPage || client.pupPage.isClosed()) {
+                console.log('Puppeteer page not initialized.');
+                recreateClient = true;
+            } else {
+                try {
+                    const storeExists = await client.pupPage.evaluate(() =>
+                        typeof window.Store !== 'undefined'
+                    );
+                    if (storeExists) {
+                        console.log('💓 Chrome alive');
+                        ready = true;
+                    } else {
+                        console.log('Chrome Store not found.');
+                    }
+                } catch (err) {
+                    console.log('Chrome unresponsive.', err);
+                    recreateClient = true;
+                }
+            }
+        }
+
+        if (recreateClient) {
+            console.log('Recreating client...');
+            recreateClient = false;
+            await client.destroy().catch(() => { });
+            killChrome();
+            createClient();
+        }
+
+        attempt++;
+    }
+
+    return { ready: $ready, message: $message };
 }
 
 async function buildChatCache() {
@@ -180,13 +241,7 @@ async function buildChatCache() {
     console.log(`✅ Cached ${chatCache.size} chats`);
 }
 
-function isClientReady() {
-    console.log("Client initializing:", initializing, "Client readiness:", isReady, "Client object:", !!client, "Puppeteer page:", client ? !!client.pupPage : 'N/A',
-        "Puppeteer page open:", !client.pupPage.isClosed());
-    return !initializing && isReady && client && client.pupPage && !client.pupPage.isClosed();
-}
-
-// HMAC verification
+// ====== Security ======
 function verifySignature(req) {
     const signature = req.headers['x-signature'];
     if (!signature) return false;
@@ -209,53 +264,6 @@ function checkRateLimit() {
     lastRequestTime = now;
 }
 
-async function checkClientReady() {
-    $ready = true;
-    $message = "";
-
-    if (initializing) {
-        console.log('Client is initializing. Please wait.');
-        $ready = false;
-        $message = 'Client is initializing, try again in a few seconds.';
-    } else if (!isReady) {
-        console.log('Client not ready.');
-        $ready = false;
-        $message = 'Client not ready, try again in a few seconds.';
-    }
-    else if (!client) {
-        console.log('Zombie state. WhatsApp client not initialized.');
-        ready = false;
-
-        if (!client.pupPage || client.pupPage.isClosed()) {
-            console.log('Puppeteer page not initialized. Destroying client.');
-            try {
-                await client.destroy();
-            }
-            catch (e) {
-                console.log('Error destroying client. Restart the app.:', e);
-            }
-        }
-
-        createClient();
-        message = 'Client restarting, try again in a few seconds.';
-    }
-
-    return { ready: $ready, message: $message };
-}
-
-async function checkBrowserAndRestart() {
-    try {
-        if (client && client.pupPage) {
-            await client.pupPage.evaluate(() => true);
-            console.log('💓 Chrome alive');
-        }
-    } catch (err) {
-        console.log('💔 Chrome unresponsive. Restarting client');
-        await client.destroy().catch(() => { });
-        createClient();
-    }
-}
-
 // ====== API ENDPOINTS ======
 app.post('/send-message', async (req, res) => {
     console.log("Begin request: /send-message");
@@ -265,8 +273,8 @@ app.post('/send-message', async (req, res) => {
         }
 
         checkRateLimit();
-        isClientReady();
-        const { ready, respMessage } = await checkClientReady();
+        printClientReady();
+        const { ready, respMessage } = await ensureClientReady();
 
         if (!ready) {
             return res.status(503).send(respMessage);
@@ -287,8 +295,6 @@ app.post('/send-message', async (req, res) => {
         if (!chatId) {
             return res.status(404).send('Group not found in cache');
         }
-
-        await checkBrowserAndRestart();
 
         await client.sendMessage(chatId, message);
 
@@ -311,8 +317,8 @@ app.post('/send-message-by-id', async (req, res) => {
         }
 
         checkRateLimit();
-        isClientReady();
-        const { ready, respMessage } = await checkClientReady();
+        printClientReady();
+        const { ready, respMessage } = await ensureClientReady();
 
         if (!ready) {
             return res.status(503).send(respMessage);
@@ -324,8 +330,6 @@ app.post('/send-message-by-id', async (req, res) => {
             return res.status(400).send('Missing chat ID or message');
         }
 
-        await checkBrowserAndRestart();
-
         await client.sendMessage(chatId, message);
 
         console.log(`📤 Sent message to ${chatId}`);
@@ -335,7 +339,7 @@ app.post('/send-message-by-id', async (req, res) => {
         console.error(err);
         res.status(500).send('Server error');
     } finally {
-        console.log("Exiting send-message endpoint");
+        console.log("Exiting send-message-by-id endpoint");
     }
 });
 
