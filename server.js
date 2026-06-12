@@ -110,7 +110,7 @@ async function createClient(destroyExisting = false) {
 
 async function safeInitialize(client) {
     initialized = false;
-    attempt = 0;
+    let attempt = 0;
 
     while (!initialized && attempt < 5) {
         console.log('⏳ Waiting before initialization...');
@@ -124,7 +124,12 @@ async function safeInitialize(client) {
             initialized = true;
             console.log('✅ WhatsApp client initialized successfully!');
         } catch (err) {
-            console.error('❌ Initialization failed:', err.message);
+            if (err.message.includes('The browser is already running')) {
+                console.error('❌ Initialization failed. The browser is already running. Client will need to be recreated.');
+            }
+            else {
+                console.error('❌ Initialization failed:', err.message);
+            }
         }
         finally {
             isClientInitializing = false;
@@ -185,7 +190,7 @@ function printClientReady() {
 async function ensureClientReady() {
     ready = false;
     message = "";
-    attempt = 0;
+    let attempt = 0;
 
     while (!ready && attempt < 5) {
         recreateClient = false;
@@ -274,11 +279,17 @@ function verifySignature(req) {
 }
 
 function checkRateLimit() {
+    var withinLimit = true;
     const now = Date.now();
+
     if (now - lastRequestTime < 2000) {
-        return res.status(429).send('Too many requests');
+        withinLimit = false;
     }
-    lastRequestTime = now;
+    else {
+        lastRequestTime = now;
+    }
+
+    return withinLimit;
 }
 
 // ====== API ENDPOINTS ======
@@ -289,7 +300,10 @@ app.post('/send-message', async (req, res) => {
             return res.status(401).send('Unauthorized');
         }
 
-        checkRateLimit();
+        if (!checkRateLimit()) {
+            return res.status(503).send('Rate limit exceeded');
+        }
+
         printClientReady();
         const { ready, respMessage } = await ensureClientReady();
 
@@ -333,7 +347,10 @@ app.post('/send-message-by-id', async (req, res) => {
             return res.status(401).send('Unauthorized');
         }
 
-        checkRateLimit();
+        if (!checkRateLimit()) {
+            return res.status(503).send('Rate limit exceeded');
+        }
+
         printClientReady();
         const { ready, respMessage } = await ensureClientReady();
 
@@ -395,3 +412,4 @@ switch (HOST) {
 
 // ===== INITIALIZE =====
 createClient();
+ensureClientReady();
