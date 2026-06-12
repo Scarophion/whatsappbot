@@ -40,15 +40,15 @@ app.use((req, res, next) => {
 });
 
 // ====== WHATSAPP CLIENT ======
-async function createClient(destroyExisting = true) {
+async function createClient(destroyExisting = false) {
     if (isClientCreating) {
         console.log('Client creation already in progress. Please wait.');
         return;
     }
 
     if (destroyExisting) {
-        console.log('Destroying existing client if it exists...');
         if (client) {
+            console.log('Destroying existing client...');
             await client.destroy().catch(() => { });
         }
         killChrome();
@@ -64,15 +64,13 @@ async function createClient(destroyExisting = true) {
             dataPath: '/data/whatsapp-session'
         }),
         puppeteer: {
-            // executablePath: PUPPETEER_EXECUTABLE_PATH,
             headless: true,
             args: [
                 '--no-sandbox',
                 '--disable-setuid-sandbox',
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
-                '--no-zygote',
-                // '--single-process'
+                '--no-zygote'
             ]
         }
     });
@@ -133,10 +131,9 @@ async function safeInitialize(client) {
         }
 
         attempt++;
-        console.log('Initialization attempt', attempt, 'completed. Success:', initialized);
     }
 
-    if (attempt >= 5 && !initialized) {
+    if (!initialized) {
         console.error(`❌ Failed to initialize WhatsApp client after ${attempt} attempts. Exiting.`);
     }
 
@@ -144,6 +141,7 @@ async function safeInitialize(client) {
 }
 
 function cleanSessionLocks() {
+    console.log('🧹 Clearing session locks...');
     const sessionPath = '/data/whatsapp-session/session';
 
     const lockFiles = [
@@ -167,8 +165,8 @@ function cleanSessionLocks() {
 }
 
 function killChrome() {
+    console.log('🧹 Killing existing Chrome processes...');
     try {
-        console.log('🧹 Killing existing Chrome processes...');
 
         if (process.platform === 'win32') {
             execSync('taskkill /F /IM chrome.exe /T', { stdio: 'ignore' });
@@ -185,28 +183,23 @@ function printClientReady() {
 }
 
 async function ensureClientReady() {
-    $ready = false;
-    $message = "";
-    $attempt = 0;
+    ready = false;
+    message = "";
+    attempt = 0;
 
-    while (!$ready && $attempt < 5) {
+    while (!ready && attempt < 5) {
         recreateClient = false;
-
-        if (attempt != 0) {
-            console.log("Waiting to retry ensureClientReady...");
-            await new Promise(r => setTimeout(r, 5000));
-        }
 
         if (isClientCreating) {
             console.log('Client is being created. Please wait.');
-            $message = 'Client is being created, try again in a few seconds.';
+            message = 'Client is being created, try again in a few seconds.';
         }
         else if (isClientInitializing) {
             console.log('Client is initializing. Please wait.');
-            $message = 'Client is initializing, try again in a few seconds.';
+            message = 'Client is initializing, try again in a few seconds.';
         } else if (!isClientReady) {
             console.log('Client not ready.');
-            $message = 'Client not ready, try again in a few seconds.';
+            message = 'Client not ready, try again in a few seconds.';
         }
         else if (!client) {
             console.log('Zombie state. WhatsApp client not initialized.');
@@ -216,22 +209,6 @@ async function ensureClientReady() {
             if (!client.pupPage || client.pupPage.isClosed()) {
                 console.log('Puppeteer page not initialized.');
                 recreateClient = true;
-            } else {
-                try {
-                    const storeExists = await client.pupPage.evaluate(() =>
-                        typeof window.Store !== 'undefined'
-                    );
-                    if (storeExists) {
-                        console.log('💓 Chrome alive');
-                        ready = true;
-                    } else {
-                        console.log('Chrome Store not found.');
-                        recreateClient = true;
-                    }
-                } catch (err) {
-                    console.log('Chrome unresponsive.', err);
-                    recreateClient = true;
-                }
             }
         }
 
@@ -242,10 +219,28 @@ async function ensureClientReady() {
         }
 
         attempt++;
+
+        if (!ready) {
+            console.log("Waiting to retry ensureClientReady...");
+            await new Promise(r => setTimeout(r, 7000));
+        }
     }
 
-    return { ready: $ready, message: $message };
+    return { ready: ready, message: message };
 }
+
+// function waitForClientReady(timeout = 5000) {
+//     return new Promise((resolve, reject) => {
+//         const checkReady = () => {
+//             if (isClientReady) {
+//                 resolve();
+//             } else {
+//                 setTimeout(reject, timeout);
+//             }
+//         };
+//         checkReady();
+//     });
+// }
 
 async function buildChatCache() {
     console.log('📚 Building chat cache...');
@@ -395,4 +390,4 @@ switch (HOST) {
 }
 
 // ===== INITIALIZE =====
-createClient(true);
+createClient();
