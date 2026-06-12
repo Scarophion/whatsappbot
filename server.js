@@ -210,6 +210,10 @@ async function ensureClientReady() {
                 console.log('Puppeteer page not initialized.');
                 recreateClient = true;
             }
+            else {
+                console.log('ensureClientReady(): Client is ready!');
+                ready = true;
+            }
         }
 
         if (recreateClient) {
