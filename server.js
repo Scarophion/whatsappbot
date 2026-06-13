@@ -267,14 +267,14 @@ async function buildChatCache() {
 function verifySignature(req) {
     const signature = req.headers['x-signature'];
     if (!signature) return false;
-
+    
     const body = JSON.stringify(req.body);
 
     const expected = crypto
         .createHmac('sha256', SECRET)
         .update(body)
         .digest('hex');
-
+        
     return signature === expected;
 }
 
@@ -374,6 +374,30 @@ app.post('/send-message-by-id', async (req, res) => {
         res.status(500).send('Server error');
     } finally {
         console.log("Exiting send-message-by-id endpoint");
+    }
+});
+
+app.get('/wake-up', async (req, res) => {
+    try {
+        console.log("Begin request: /wake-up");
+        if (!verifySignature(req)) {
+            return res.status(401).send('Unauthorized');
+        }
+
+        if (!checkRateLimit()) {
+            return res.status(503).send('Rate limit exceeded');
+        }
+
+        printClientReady();
+        const { ready, respMessage } = await ensureClientReady();
+        printClientReady();
+		
+		res.send(ready?'Client ready.':'Client not ready.');
+    } catch (err) {
+        console.error(err);
+        res.status(500).send('Server error');
+    } finally {
+        console.log("Exiting wake-up endpoint");
     }
 });
 
