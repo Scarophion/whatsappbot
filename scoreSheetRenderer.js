@@ -370,7 +370,7 @@ async function renderScoreSheetHtml(scoreSheet) {
               ${rowMarkup(scoreSheet.scoreByInning.battingFirstTeam, scoreSheet.scoreByInning.battingFirst)}
               ${rowMarkup(scoreSheet.scoreByInning.battingSecondTeam, scoreSheet.scoreByInning.battingSecond)}
             </tbody>
-          </table>a
+          </table>
         </div>
       </section>
 

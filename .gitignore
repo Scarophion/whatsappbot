@@ -56,7 +56,6 @@ docker-compose.override.yml
 # Misc
 *.swp
 *.swo
-test.ps1
-test2.ps1
+test*.ps1
 certs/*
 output/*
