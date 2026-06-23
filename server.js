@@ -120,17 +120,17 @@ async function createClient(destroyExisting = false) {
         isClientAuthenticating = false;
     });
 
-    client.on('message_ack', (msg, ack) => {
-        const ackLabel = ACK_LABELS[ack] || `UNKNOWN(${ack})`;
+    // client.on('message_ack', (msg, ack) => {
+    //     const ackLabel = ACK_LABELS[ack] || `UNKNOWN(${ack})`;
 
-        if (ack === 1) {
-            console.log('✅ Message sent to WhatsApp server:', msg.id._serialized, '(', msg.body.slice(0, 20), '...)', 'ack:', ackLabel);
-        } else if (ack >= 2) {
-            console.log('✅ Message delivered/read:', msg.id._serialized, 'ack:', ackLabel);
-        } else {
-            console.log('ℹ️ Message ack update:', msg.id._serialized, 'ack:', ackLabel);
-        }
-    });
+    //     if (ack === 1) {
+    //         console.log('✅ Message sent to WhatsApp server:', msg.id._serialized, '(', msg.body.slice(0, 20), '...)', 'ack:', ackLabel);
+    //     } else if (ack >= 2) {
+    //         console.log('✅ Message delivered/read:', msg.id._serialized, 'ack:', ackLabel);
+    //     } else {
+    //         console.log('ℹ️ Message ack update:', msg.id._serialized, 'ack:', ackLabel);
+    //     }
+    // });
 
     await safeInitialize(client);
     isClientCreating = false;
@@ -593,6 +593,9 @@ app.post("/send-score-sheet", async (req, res) => {
     } catch (error) {
         console.error(error);
         return res.status(500).send("Server error.");
+    }
+    finally {
+        console.log("Exiting send-score-sheet endpoint");
     }
 });
 
