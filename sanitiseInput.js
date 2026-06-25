@@ -79,9 +79,13 @@ function toInnings(values) {
     }
 
     for (let i = 0; i < 10; i += 1) {
-        const n = Number(values[i]);
-        output[i] = Number.isFinite(n) ? n : undefined;
-        // output[i] = Number(values[i])  //toNumber(values[i], 0);
+        if (values[i] == "") {
+            output[i] = undefined;
+        }
+        else {
+            const n = Number(values[i]);
+            output[i] = Number.isFinite(n) ? n : undefined;
+        }
     }
 
     return output;
@@ -100,5 +104,5 @@ function toTextList(values) {
 // }
 
 module.exports = {
-  normaliseScoreSheetPayload
+    normaliseScoreSheetPayload
 };
