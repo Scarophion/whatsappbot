@@ -52,8 +52,13 @@ async function renderAndCapture({ html, screenshotPath, browser }) {
   let page;
   try {
     page = await browser.newPage();
+
+    page.on('requestfailed', request => {
+      console.log('Request failed:', screenshotPath);
+    });
+
     await page.setViewport({ width: 1400, height: 2200, deviceScaleFactor: 2 });
-    await page.setContent(html, { waitUntil: "networkidle0" });
+    await page.setContent(html, { waitUntil: "domcontentloaded", timeout: 60000 });
 
     await page.evaluate(async () => {
       if (document.fonts && document.fonts.ready) {
