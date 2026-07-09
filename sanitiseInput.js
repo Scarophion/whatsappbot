@@ -79,7 +79,7 @@ function toInnings(values) {
     }
 
     for (let i = 0; i < 10; i += 1) {
-        if (values[i] == "") {
+        if (values[i] === "") {
             output[i] = undefined;
         }
         else {

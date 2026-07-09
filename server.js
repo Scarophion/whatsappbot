@@ -84,7 +84,8 @@ async function createClient(destroyExisting = false) {
                 '--disable-dev-shm-usage',
                 '--disable-gpu',
                 '--no-zygote'
-            ]
+            ],
+            protocolTimeout: 120000,
         }
     });
 
@@ -256,6 +257,10 @@ async function ensureClientReady() {
             if (!client.pupPage || client.pupPage.isClosed()) {
                 console.log('Puppeteer page not initialized.');
                 recreateClient = true;
+            }
+            else if (!client.info){
+                console.log('Client info not available. Client may not be fully initialized.');
+                // recreateClient = true;
             }
             else {
                 console.log('ensureClientReady(): Client is ready!');
