@@ -9,7 +9,7 @@ const qrcode = require('qrcode-terminal');
 const path = require('path');
 const { execSync } = require('child_process');
 const { renderAndCapture, renderScoreSheetHtml } = require('./scoreSheetRenderer');
-const {normaliseScoreSheetPayload} = require('./sanitiseInput');
+const { normaliseScoreSheetPayload } = require('./sanitiseInput');
 
 let client = null;
 let isClientReady = false;
@@ -85,7 +85,7 @@ async function createClient(destroyExisting = false) {
                 '--disable-gpu',
                 '--no-zygote'
             ],
-            protocolTimeout: 120000,
+            protocolTimeout: 90000,
         }
     });
 
@@ -107,7 +107,6 @@ async function createClient(destroyExisting = false) {
     client.on('disconnected', () => {
         console.log('❌ WhatsApp disconnected.');
         isClientReady = false;
-
     });
 
     client.on('authenticated', () => {
@@ -258,13 +257,20 @@ async function ensureClientReady() {
                 console.log('Puppeteer page not initialized.');
                 recreateClient = true;
             }
-            else if (!client.info){
+            else if (!client.info) {
                 console.log('Client info not available. Client may not be fully initialized.');
                 // recreateClient = true;
             }
             else {
-                console.log('ensureClientReady(): Client is ready!');
-                ready = true;
+                try {
+                    await client.getState();
+                    // All OK
+                    console.log('ensureClientReady(): Client is ready!');
+                    ready = true;
+                } catch (err) {
+                    console.log('Client appears stale. Reinitializing...');
+                    recreateClient = true;
+                }
             }
         }
 
